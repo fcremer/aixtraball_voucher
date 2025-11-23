@@ -85,6 +85,7 @@ class RedeemResult(BaseModel):
     code: str
     status: VoucherStatus
     redeemed_at: Optional[dt.datetime]
+    amount: Optional[float]
 
 
 class EmailSendPayload(BaseModel):
@@ -644,6 +645,7 @@ def redeem_voucher(
             detail={
                 "message": "Voucher already redeemed",
                 "redeemed_at": record.get("redeemed_at"),
+                "amount": amount_from_cents(record.get("amount")),
             },
         )
 
@@ -655,6 +657,7 @@ def redeem_voucher(
         code=record["code"],
         status=VoucherStatus.redeemed,
         redeemed_at=parse_datetime(record["redeemed_at"]),
+        amount=amount_from_cents(record.get("amount")),
     )
 
 
