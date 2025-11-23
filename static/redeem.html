@@ -72,12 +72,13 @@
       margin-top:12px;
       padding:12px;
       border-radius:12px;
-      background:rgba(var(--bs-primary-rgb),.05);
-      border:1px dashed rgba(var(--bs-primary-rgb),.35);
       min-height:48px;
-      color:#7f1d1d;
       font-size:14px;
+      border:1px solid transparent;
     }
+    .status--idle{background:rgba(var(--bs-primary-rgb),.05);border-color:rgba(var(--bs-primary-rgb),.25);color:#7f1d1d;}
+    .status--success{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4);color:#065f46;}
+    .status--error{background:rgba(220,38,38,.12);border-color:rgba(220,38,38,.4);color:#7c1a17;}
     button, input{
       font:inherit;
     }
@@ -152,10 +153,10 @@
         <span class="pill"><code>voucher:&lt;code&gt;</code></span>
       </div>
       <div id="reader" style="width: 100%;"></div>
-      <div class="status" id="scan-status">Warte auf Scan...</div>
+      <div class="status status--idle" id="scan-status">Warte auf Scan...</div>
       <input type="text" id="manual-code" placeholder="Code oder QR-Text eingeben">
       <button id="redeem-btn">Entwerten</button>
-      <div class="status" id="redeem-status"></div>
+      <div class="status status--idle" id="redeem-status">Noch keine Entwertung.</div>
     </div>
   </main>
 
@@ -193,11 +194,15 @@
     function flashSuccess() {
       document.body.classList.add('success-flash');
       setTimeout(() => document.body.classList.remove('success-flash'), 1200);
+      scanStatus.className = 'status status--success';
+      scanStatus.textContent = '✅ QR erkannt';
     }
 
-    function flashError() {
+    function flashError(message) {
       document.body.classList.add('error-flash');
       setTimeout(() => document.body.classList.remove('error-flash'), 1200);
+      scanStatus.className = 'status status--error';
+      scanStatus.textContent = message || '❌ Fehler beim Scan';
     }
 
     function playPing() {
@@ -227,6 +232,7 @@
       }
       if (isRedeeming) return;
       isRedeeming = true;
+      redeemStatus.className = 'status status--idle';
       redeemStatus.textContent = `Entwerte ${payload.code}...`;
       try {
         const url = payload.signature
@@ -241,14 +247,16 @@
           throw err;
         }
         const data = await res.json();
+        redeemStatus.className = 'status status--success';
         redeemStatus.textContent = `✅ Entwertet: ${data.code} um ${new Date(data.redeemed_at).toLocaleString()}`;
         handledCodes.add(payload.code);
         flashSuccess();
         playPing();
       } catch (err) {
         const info = err.redeemedAt ? ` Bereits entwertet am ${new Date(err.redeemedAt).toLocaleString()}.` : '';
+        redeemStatus.className = 'status status--error';
         redeemStatus.textContent = `❌ Fehler: ${err.message}${info}`;
-        flashError();
+        flashError('❌ Bereits entwertet');
       } finally {
         isRedeeming = false;
       }
