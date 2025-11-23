@@ -299,7 +299,10 @@ def parse_datetime(value: Optional[str]) -> Optional[dt.datetime]:
         return None
     if value.endswith("Z"):
         value = value[:-1] + "+00:00"
-    return dt.datetime.fromisoformat(value)
+    parsed = dt.datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _default_store() -> dict:
