@@ -312,18 +312,18 @@
         const data = await res.json();
         const amountInfo = data.amount ? `${data.amount.toFixed(2)} € Rabatt` : '5 € Rabatt';
         redeemStatus.className = 'status status--success';
-        redeemStatus.textContent = `✅ Entwertet: ${data.code} – ${amountInfo} (${new Date(data.redeemed_at).toLocaleString()})`;
+        redeemStatus.textContent = `✅ ${amountInfo} eingelöst (${new Date(data.redeemed_at).toLocaleString()})`;
         handledCodes.add(payload.code);
         flashSuccess();
         playPing();
-        showFeedback('success', 'Voucher entwertet', `Code ${data.code} wurde erfolgreich entwertet.`, amountInfo);
+        showFeedback('success', 'Voucher entwertet', `${amountInfo} wurden eingelöst.`, `Code: ${data.code}`);
       } catch (err) {
         const info = err.redeemedAt ? ` Bereits entwertet am ${new Date(err.redeemedAt).toLocaleString()}.` : '';
         redeemStatus.className = 'status status--error';
         redeemStatus.textContent = `❌ Fehler: ${err.message}${info}`;
         flashError('❌ Bereits entwertet');
         const amountInfo = err.amount ? `${err.amount.toFixed(2)} € Rabatt` : '';
-        showFeedback('error', 'Nicht entwertet', `${err.message}.${info}`, amountInfo);
+        showFeedback('error', 'Nicht entwertet', `${err.message}.${info}`, amountInfo ? `Code: ${payload.code} – ${amountInfo}` : `Code: ${payload.code}`);
       } finally {
         isRedeeming = false;
       }
