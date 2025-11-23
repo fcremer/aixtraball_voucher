@@ -310,9 +310,9 @@
           throw err;
         }
         const data = await res.json();
-        const amountInfo = data.amount ? `Rabatt: ${data.amount.toFixed(2)} €` : '';
+        const amountInfo = data.amount ? `${data.amount.toFixed(2)} € Rabatt` : '5 € Rabatt';
         redeemStatus.className = 'status status--success';
-        redeemStatus.textContent = `✅ Entwertet: ${data.code} um ${new Date(data.redeemed_at).toLocaleString()}`;
+        redeemStatus.textContent = `✅ Entwertet: ${data.code} – ${amountInfo} (${new Date(data.redeemed_at).toLocaleString()})`;
         handledCodes.add(payload.code);
         flashSuccess();
         playPing();
@@ -322,7 +322,7 @@
         redeemStatus.className = 'status status--error';
         redeemStatus.textContent = `❌ Fehler: ${err.message}${info}`;
         flashError('❌ Bereits entwertet');
-        const amountInfo = err.amount ? `Rabatt: ${err.amount.toFixed(2)} €` : '';
+        const amountInfo = err.amount ? `${err.amount.toFixed(2)} € Rabatt` : '';
         showFeedback('error', 'Nicht entwertet', `${err.message}.${info}`, amountInfo);
       } finally {
         isRedeeming = false;
