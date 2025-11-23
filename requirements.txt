@@ -6,3 +6,4 @@ pydantic[email]==2.8.2
 qrcode==7.4.2
 pillow==10.4.0
 pyotp==2.9.0
+PyYAML==6.0.2

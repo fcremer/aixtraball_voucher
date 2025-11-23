@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  voucher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: voucher-service:latest
+    container_name: voucher-service
+    restart: unless-stopped
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-aixtraball-aixtraball210!}
+      - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET:-JBSWY3DPEHPK3PXP}
+      - VOUCHER_SIGNING_SECRET=${VOUCHER_SIGNING_SECRET:-CHANGE_ME_SIGNING_SECRET}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./outbox:/app/outbox

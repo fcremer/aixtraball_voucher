@@ -8,7 +8,7 @@ import uuid
 import secrets
 from io import BytesIO
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Optional
 
 import qrcode
 import pyotp
@@ -18,15 +18,17 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 from PIL import Image, ImageDraw, ImageFont
-from sqlalchemy import Column, DateTime, Enum as SqlEnum, Integer, String, Text, create_engine, inspect, text
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from threading import Lock
+import copy
+import yaml
 
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
 OUTBOX_DIR = ROOT / "outbox"
 STATIC_DIR = ROOT / "static"
+STORE_FILE = DATA_DIR / "vouchers.yaml"
+STORE_LOCK = Lock()
 
-DATABASE_URL = f"sqlite:///{DATA_DIR / 'vouchers.db'}"
 DEVICE_COOKIE = "voucher_device_id"
 BRAND_PRIMARY = (210, 55, 41)  # #D23729
 BRAND_DARK = (165, 35, 23)  # #A52317
@@ -39,48 +41,10 @@ SESSION_COOKIE = "admin_session"
 SESSION_DURATION_HOURS = 8
 VOUCHER_SIGNING_SECRET = os.getenv("VOUCHER_SIGNING_SECRET", "CHANGE_ME_SIGNING_SECRET")
 
-engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
-)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-Base = declarative_base()
-
 
 class VoucherStatus(str, enum.Enum):
     active = "active"
     redeemed = "redeemed"
-
-
-class Voucher(Base):
-    __tablename__ = "vouchers"
-
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, nullable=True)
-    recipient_name = Column(String, nullable=True)
-    amount = Column(Integer, nullable=True)  # store cents to avoid float issues
-    note = Column(Text, nullable=True)
-    delivery_method = Column(String, default="download")
-    device_id = Column(String, nullable=True, index=True)
-    status = Column(SqlEnum(VoucherStatus), default=VoucherStatus.active, nullable=False)
-    created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
-    redeemed_at = Column(DateTime, nullable=True)
-
-
-class FeatureFlag(Base):
-    __tablename__ = "feature_flags"
-
-    key = Column(String, primary_key=True)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
-
-
-class AdminSession(Base):
-    __tablename__ = "admin_sessions"
-
-    token = Column(String, primary_key=True)
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
 
 
 class VoucherDelivery(str, enum.Enum):
@@ -142,14 +106,6 @@ def ensure_folders() -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 def load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont:
     font_name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
     try:
@@ -172,7 +128,7 @@ def generate_qr(content: str) -> bytes:
     return buffer.getvalue()
 
 
-def voucher_card_image(voucher: Voucher) -> bytes:
+def voucher_card_image(voucher: VoucherOut) -> bytes:
     width, height = 1200, 640
     margin = 38
     card_radius = 40
@@ -268,7 +224,7 @@ def qr_base64_for(code: str) -> str:
     return base64.b64encode(img_bytes).decode("ascii")
 
 
-def card_base64_for(voucher: Voucher) -> str:
+def card_base64_for(voucher: VoucherOut) -> str:
     img_bytes = voucher_card_image(voucher)
     return base64.b64encode(img_bytes).decode("ascii")
 
@@ -295,7 +251,14 @@ def validate_signature(code: str, signature: Optional[str]) -> None:
         raise HTTPException(status_code=400, detail="Ungültige Signatur.")
 
 
-def send_email_stub(voucher: Voucher, voucher_png: bytes) -> None:
+def require_admin_session(request: Request) -> dict:
+    session = get_session_by_token(request.cookies.get(SESSION_COOKIE))
+    if not session:
+        raise HTTPException(status_code=401, detail="Login erforderlich")
+    return session
+
+
+def send_email_stub(voucher: VoucherOut, voucher_png: bytes) -> None:
     OUTBOX_DIR.mkdir(exist_ok=True, parents=True)
     filename = OUTBOX_DIR / f"voucher_{voucher.code}.txt"
     redeem_hint = f"Redeem via QR code or POST /vouchers/{voucher.code}/redeem"
@@ -321,92 +284,227 @@ def amount_from_cents(amount: Optional[int]) -> Optional[float]:
     return None if amount is None else amount / 100
 
 
-def voucher_to_out(voucher: Voucher) -> VoucherOut:
-    return VoucherOut(
-        id=voucher.id,
-        code=voucher.code,
-        status=voucher.status,
-        amount=amount_from_cents(voucher.amount),
-        email=voucher.email,
-        recipient_name=voucher.recipient_name,
-        note=voucher.note,
-        created_at=voucher.created_at,
-        redeemed_at=voucher.redeemed_at,
-        qr_base64=qr_base64_for(voucher.code),
-        card_base64=card_base64_for(voucher),
-        redeem_hint=f"Scan QR oder POST /vouchers/{voucher.code}/redeem",
+def serialize_datetime(value: Optional[dt.datetime]) -> Optional[str]:
+    return value.isoformat() if value else None
+
+
+def parse_datetime(value: Optional[str]) -> Optional[dt.datetime]:
+    if not value:
+        return None
+    return dt.datetime.fromisoformat(value)
+
+
+def _default_store() -> dict:
+    return {
+        "next_id": 1,
+        "vouchers": [],
+        "feature_flag": None,
+        "sessions": [],
+    }
+
+
+def _load_store() -> dict:
+    if not STORE_FILE.exists():
+        return _default_store()
+    with open(STORE_FILE, "r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    if "next_id" not in data:
+        data["next_id"] = 1
+    data.setdefault("vouchers", [])
+    data.setdefault("sessions", [])
+    if data.get("feature_flag") is None:
+        data["feature_flag"] = None
+    return data
+
+
+def _save_store(data: dict) -> None:
+    STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(STORE_FILE, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh)
+
+
+def _read_store() -> dict:
+    with STORE_LOCK:
+        return copy.deepcopy(_load_store())
+
+
+def _mutate_store(mutator):
+    with STORE_LOCK:
+        data = _load_store()
+        result = mutator(data)
+        _save_store(data)
+        return result
+
+
+def list_voucher_records() -> list[dict]:
+    return _read_store().get("vouchers", [])
+
+
+def get_voucher_record(code: str) -> Optional[dict]:
+    for record in list_voucher_records():
+        if record["code"] == code:
+            return record
+    return None
+
+
+def upsert_voucher_record(record: dict) -> dict:
+    def mutator(data: dict):
+        for idx, existing in enumerate(data["vouchers"]):
+            if existing["code"] == record["code"]:
+                data["vouchers"][idx] = record
+                break
+        else:
+            data["vouchers"].append(record)
+        return record
+
+    return _mutate_store(mutator)
+
+
+def delete_voucher_record(code: str) -> Optional[dict]:
+    def mutator(data: dict):
+        for idx, existing in enumerate(data["vouchers"]):
+            if existing["code"] == code:
+                removed = data["vouchers"].pop(idx)
+                return removed
+        return None
+
+    return _mutate_store(mutator)
+
+
+def record_to_out(record: dict) -> VoucherOut:
+    base = VoucherOut(
+        id=record["id"],
+        code=record["code"],
+        status=VoucherStatus(record["status"]),
+        amount=amount_from_cents(record.get("amount")),
+        email=record.get("email"),
+        recipient_name=record.get("recipient_name"),
+        note=record.get("note"),
+        created_at=parse_datetime(record.get("created_at")),
+        redeemed_at=parse_datetime(record.get("redeemed_at")),
+        redeem_hint=f"Scan QR oder POST /vouchers/{record['code']}/redeem",
+        qr_base64="",
+        card_base64=None,
     )
+    qr = qr_base64_for(record["code"])
+    card = card_base64_for(base)
+    return base.model_copy(update={"qr_base64": qr, "card_base64": card})
 
 
-def creation_enabled(db: Session) -> AdminStatus:
-    flag = db.query(FeatureFlag).filter(FeatureFlag.key == CREATION_FLAG_KEY).first()
-    now = dt.datetime.utcnow()
-    if not flag or not flag.expires_at:
+def create_voucher_record(payload: VoucherCreate, *, device_id: Optional[str] = None, code: Optional[str] = None) -> dict:
+    def mutator(data: dict):
+        now = dt.datetime.utcnow()
+        record = {
+            "id": data.get("next_id", 1),
+            "code": code or uuid.uuid4().hex,
+            "email": payload.email,
+            "recipient_name": payload.recipient_name,
+            "amount": amount_to_cents(payload.amount),
+            "note": payload.note,
+            "delivery_method": payload.delivery_method.value,
+            "device_id": device_id,
+            "status": VoucherStatus.active.value,
+            "created_at": now.isoformat(),
+            "redeemed_at": None,
+        }
+        data["next_id"] = record["id"] + 1
+        data.setdefault("vouchers", []).append(record)
+        return copy.deepcopy(record)
+
+    return _mutate_store(mutator)
+
+
+def update_voucher_record(record: dict) -> dict:
+    return upsert_voucher_record(record)
+
+
+def list_vouchers_out() -> list[VoucherOut]:
+    return [record_to_out(r) for r in list_voucher_records()]
+
+
+def find_voucher_out(code: str) -> VoucherOut:
+    record = get_voucher_record(code)
+    if not record:
+        raise HTTPException(status_code=404, detail="Voucher not found")
+    return record_to_out(record)
+
+
+def latest_device_voucher(device_id: str) -> Optional[dict]:
+    if not device_id:
+        return None
+    records = [r for r in list_voucher_records() if r.get("device_id") == device_id]
+    if not records:
+        return None
+    records.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return records[0]
+
+
+def creation_enabled() -> AdminStatus:
+    data = _read_store()
+    flag = data.get("feature_flag")
+    if not flag or not flag.get("expires_at"):
         return AdminStatus(active=False, enabled_until=None)
-    return AdminStatus(active=flag.expires_at > now, enabled_until=flag.expires_at)
+    expires_at = parse_datetime(flag.get("expires_at"))
+    active = expires_at is not None and expires_at > dt.datetime.utcnow()
+    return AdminStatus(active=active, enabled_until=expires_at)
 
 
-def set_creation_window(db: Session, minutes: int = CREATION_WINDOW_MINUTES) -> AdminStatus:
+def set_creation_window(minutes: int = CREATION_WINDOW_MINUTES) -> AdminStatus:
     expires_at = dt.datetime.utcnow() + dt.timedelta(minutes=minutes)
-    flag = db.query(FeatureFlag).filter(FeatureFlag.key == CREATION_FLAG_KEY).first()
-    if not flag:
-        flag = FeatureFlag(key=CREATION_FLAG_KEY, expires_at=expires_at)
-        db.add(flag)
-    else:
-        flag.expires_at = expires_at
-    db.commit()
-    db.refresh(flag)
+
+    def mutator(data: dict):
+        data["feature_flag"] = {"expires_at": expires_at.isoformat()}
+        return data["feature_flag"]
+
+    _mutate_store(mutator)
     return AdminStatus(active=True, enabled_until=expires_at)
 
 
-def require_creation_enabled(db: Session) -> None:
-    status = creation_enabled(db)
+def require_creation_enabled() -> None:
+    status = creation_enabled()
     if not status.active:
         raise HTTPException(status_code=403, detail="Voucher-Erstellung derzeit nicht freigeschaltet.")
 
 
-def create_admin_session(db: Session) -> AdminSession:
-    token = secrets.token_urlsafe(32)
-    expires_at = dt.datetime.utcnow() + dt.timedelta(hours=SESSION_DURATION_HOURS)
-    session = AdminSession(token=token, expires_at=expires_at)
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return session
+def create_admin_session() -> dict:
+    def mutator(data: dict):
+        now = dt.datetime.utcnow()
+        expires_at = now + dt.timedelta(hours=SESSION_DURATION_HOURS)
+        token = secrets.token_urlsafe(32)
+        sessions = []
+        for entry in data.get("sessions", []):
+            exp = parse_datetime(entry.get("expires_at"))
+            if exp and exp > now:
+                sessions.append({"token": entry["token"], "expires_at": exp.isoformat()})
+        sessions.append({"token": token, "expires_at": expires_at.isoformat()})
+        data["sessions"] = sessions
+        return {"token": token, "expires_at": expires_at}
+
+    return _mutate_store(mutator)
 
 
-def get_session_by_token(db: Session, token: str) -> Optional[AdminSession]:
+def get_session_by_token(token: Optional[str]) -> Optional[dict]:
     if not token:
         return None
-    session = db.query(AdminSession).filter(AdminSession.token == token).first()
-    if not session:
-        return None
-    if session.expires_at < dt.datetime.utcnow():
-        db.delete(session)
-        db.commit()
-        return None
-    return session
 
+    def mutator(data: dict):
+        now = dt.datetime.utcnow()
+        found = None
+        sessions = []
+        for entry in data.get("sessions", []):
+            exp = parse_datetime(entry.get("expires_at"))
+            if not exp or exp <= now:
+                continue
+            if entry["token"] == token:
+                found = {"token": token, "expires_at": exp}
+            sessions.append({"token": entry["token"], "expires_at": exp.isoformat()})
+        data["sessions"] = sessions
+        return found
 
-def require_admin_session(request: Request, db: Session = Depends(get_db)) -> AdminSession:
-    token = request.cookies.get(SESSION_COOKIE)
-    session = get_session_by_token(db, token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Login erforderlich")
-    return session
-
-
-def ensure_schema():
-    Base.metadata.create_all(bind=engine)
-    inspector = inspect(engine)
-    columns = [col["name"] for col in inspector.get_columns("vouchers")]
-    if "device_id" not in columns:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE vouchers ADD COLUMN device_id VARCHAR"))
+    return _mutate_store(mutator)
 
 
 ensure_folders()
-ensure_schema()
 
 app = FastAPI(title="Voucher Service", version="0.1.0")
 
@@ -430,85 +528,63 @@ def health() -> dict[str, str]:
 @app.post("/vouchers", response_model=VoucherOut)
 def create_voucher(
     payload: VoucherCreate,
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> VoucherOut:
-    require_creation_enabled(db)
-    code = uuid.uuid4().hex
-    voucher = Voucher(
-        code=code,
-        email=payload.email,
-        recipient_name=payload.recipient_name,
-        amount=amount_to_cents(payload.amount),
-        note=payload.note,
-        delivery_method=payload.delivery_method.value,
-        status=VoucherStatus.active,
-    )
-    db.add(voucher)
-    db.commit()
-    db.refresh(voucher)
-
-    voucher_png = generate_qr(signed_payload(voucher.code))
+    require_creation_enabled()
+    record = create_voucher_record(payload)
+    voucher = record_to_out(record)
     if payload.delivery_method == VoucherDelivery.email and payload.email:
+        voucher_png = generate_qr(signed_payload(voucher.code))
         send_email_stub(voucher, voucher_png)
-
-    return voucher_to_out(voucher)
+    return voucher
 
 
 @app.get("/vouchers", response_model=list[VoucherOut])
 def list_vouchers(
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> list[VoucherOut]:
-    vouchers = db.query(Voucher).order_by(Voucher.created_at.desc()).all()
-    return [voucher_to_out(v) for v in vouchers]
+    return list_vouchers_out()
 
 
 @app.get("/vouchers/{code}", response_model=VoucherOut)
 def get_voucher(
     code: str,
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> VoucherOut:
-    voucher = db.query(Voucher).filter(Voucher.code == code).first()
-    if not voucher:
-        raise HTTPException(status_code=404, detail="Voucher not found")
-    return voucher_to_out(voucher)
+    return find_voucher_out(code)
 
 
 @app.post("/vouchers/{code}/send_email", response_model=VoucherOut)
-def send_voucher_email(code: str, payload: EmailSendPayload, db: Session = Depends(get_db)) -> VoucherOut:
-    voucher = db.query(Voucher).filter(Voucher.code == code).first()
-    if not voucher:
+def send_voucher_email(code: str, payload: EmailSendPayload) -> VoucherOut:
+    record = get_voucher_record(code)
+    if not record:
         raise HTTPException(status_code=404, detail="Voucher not found")
-    voucher.email = payload.email
-    db.add(voucher)
-    db.commit()
-    db.refresh(voucher)
-
+    record["email"] = payload.email
+    update_voucher_record(record)
+    voucher = record_to_out(record)
     voucher_png = generate_qr(signed_payload(voucher.code))
     send_email_stub(voucher, voucher_png)
-    return voucher_to_out(voucher)
+    return voucher
 
 
 @app.get("/vouchers/{code}/qr.png")
-def voucher_qr_png(code: str, db: Session = Depends(get_db)) -> StreamingResponse:
-    voucher = db.query(Voucher).filter(Voucher.code == code).first()
-    if not voucher:
+def voucher_qr_png(code: str) -> StreamingResponse:
+    record = get_voucher_record(code)
+    if not record:
         raise HTTPException(status_code=404, detail="Voucher not found")
-    img_bytes = generate_qr(signed_payload(voucher.code))
+    img_bytes = generate_qr(signed_payload(record["code"]))
     return StreamingResponse(BytesIO(img_bytes), media_type="image/png")
 
 
 @app.get("/vouchers/{code}/card.png")
 def voucher_card_png(
     code: str,
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> StreamingResponse:
-    voucher = db.query(Voucher).filter(Voucher.code == code).first()
-    if not voucher:
+    record = get_voucher_record(code)
+    if not record:
         raise HTTPException(status_code=404, detail="Voucher not found")
+    voucher = record_to_out(record)
     img_bytes = voucher_card_image(voucher)
     return StreamingResponse(BytesIO(img_bytes), media_type="image/png")
 
@@ -525,106 +601,85 @@ def validate_admin(payload: AdminLogin) -> None:
 def admin_login(
     payload: AdminLogin,
     response: Response,
-    db: Session = Depends(get_db),
 ) -> AdminStatus:
     validate_admin(payload)
-    session = create_admin_session(db)
+    session = create_admin_session()
     response.set_cookie(
         SESSION_COOKIE,
-        session.token,
+        session["token"],
         max_age=SESSION_DURATION_HOURS * 3600,
         httponly=True,
         samesite="Lax",
     )
-    return creation_enabled(db)
+    return creation_enabled()
 
 
 @app.get("/admin/status", response_model=AdminStatus)
 def admin_status(
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> AdminStatus:
-    return creation_enabled(db)
+    return creation_enabled()
 
 
 @app.post("/admin/enable", response_model=AdminStatus)
 def admin_enable(
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> AdminStatus:
-    return set_creation_window(db)
+    return set_creation_window()
 
 
 @app.post("/vouchers/{code}/redeem", response_model=RedeemResult)
 def redeem_voucher(
     code: str,
     signature: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
 ) -> RedeemResult:
     if signature is not None:
         validate_signature(code, signature)
-    voucher = db.query(Voucher).filter(Voucher.code == code).first()
-    if not voucher:
+    record = get_voucher_record(code)
+    if not record:
         raise HTTPException(status_code=404, detail="Voucher not found")
-    if voucher.status == VoucherStatus.redeemed:
+    if record["status"] == VoucherStatus.redeemed.value:
         raise HTTPException(
             status_code=400,
             detail={
                 "message": "Voucher already redeemed",
-                "redeemed_at": voucher.redeemed_at.isoformat() if voucher.redeemed_at else None,
+                "redeemed_at": record.get("redeemed_at"),
             },
         )
 
-    voucher.status = VoucherStatus.redeemed
-    voucher.redeemed_at = dt.datetime.utcnow()
-    db.add(voucher)
-    db.commit()
-    db.refresh(voucher)
+    record["status"] = VoucherStatus.redeemed.value
+    record["redeemed_at"] = dt.datetime.utcnow().isoformat()
+    update_voucher_record(record)
 
     return RedeemResult(
-        code=voucher.code,
-        status=voucher.status,
-        redeemed_at=voucher.redeemed_at,
+        code=record["code"],
+        status=VoucherStatus.redeemed,
+        redeemed_at=parse_datetime(record["redeemed_at"]),
     )
 
 
 @app.delete("/vouchers/{code}", response_model=RedeemResult)
 def delete_voucher(
     code: str,
-    db: Session = Depends(get_db),
-    admin_session: AdminSession = Depends(require_admin_session),
+    admin_session: dict = Depends(require_admin_session),
 ) -> RedeemResult:
-    voucher = db.query(Voucher).filter(Voucher.code == code).first()
-    if not voucher:
+    record = delete_voucher_record(code)
+    if not record:
         raise HTTPException(status_code=404, detail="Voucher not found")
-    db.delete(voucher)
-    db.commit()
-    return RedeemResult(code=code, status=VoucherStatus.redeemed, redeemed_at=voucher.redeemed_at)
+    return RedeemResult(code=code, status=VoucherStatus.redeemed, redeemed_at=parse_datetime(record.get("redeemed_at")))
 
 
 @app.post("/claim", response_model=VoucherOut)
-def claim_voucher(request: Request, response: Response, db: Session = Depends(get_db)) -> VoucherOut:
+def claim_voucher(request: Request, response: Response) -> VoucherOut:
     device_id = request.cookies.get(DEVICE_COOKIE) or uuid.uuid4().hex
-    existing = (
-        db.query(Voucher)
-        .filter(Voucher.device_id == device_id)
-        .order_by(Voucher.created_at.desc())
-        .first()
-    )
-    if existing:
-        voucher = existing
+    record = latest_device_voucher(device_id)
+    if record:
+        voucher = record_to_out(record)
     else:
-        require_creation_enabled(db)
-        voucher = Voucher(
-            code=uuid.uuid4().hex,
-            device_id=device_id,
-            status=VoucherStatus.active,
-            delivery_method=VoucherDelivery.download.value,
-            created_at=dt.datetime.utcnow(),
-        )
-        db.add(voucher)
-        db.commit()
-        db.refresh(voucher)
+        require_creation_enabled()
+        payload = VoucherCreate()
+        new_record = create_voucher_record(payload, device_id=device_id, code=uuid.uuid4().hex)
+        voucher = record_to_out(new_record)
 
     response.set_cookie(
         key=DEVICE_COOKIE,
@@ -633,4 +688,4 @@ def claim_voucher(request: Request, response: Response, db: Session = Depends(ge
         httponly=False,
         samesite="Lax",
     )
-    return voucher_to_out(voucher)
+    return voucher
