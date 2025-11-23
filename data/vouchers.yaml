@@ -1,6 +1,6 @@
 feature_flag:
   expires_at: '2025-11-23T12:04:31.064802'
-next_id: 2
+next_id: 3
 sessions:
 - expires_at: '2025-11-23T19:04:16.182019'
   token: J3LavJQkFL3hdYoRciw1edi3p6dxu0JtyLKMSuGjecg
@@ -16,3 +16,14 @@ vouchers:
   recipient_name: null
   redeemed_at: '2025-11-23T11:51:13.065393'
   status: redeemed
+- amount: null
+  code: ed5d4402060a416aaf66978becee3a3d
+  created_at: '2025-11-23T11:59:17.443304'
+  delivery_method: download
+  device_id: 6cdfe99447bd4a0abdf95791ff0fb534
+  email: null
+  id: 2
+  note: null
+  recipient_name: null
+  redeemed_at: null
+  status: active
