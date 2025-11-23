@@ -145,25 +145,9 @@
       margin-top:14px;
     }
     .voucher-result{
-      display:grid;
-      gap:12px;
-    }
-    .voucher-image{
-      width:100%;
-      border-radius:16px;
-      border:1px solid rgba(0,0,0,.08);
-      box-shadow:0 14px 30px rgba(0,0,0,.12);
-    }
-    .voucher-meta{
       display:flex;
       flex-direction:column;
-      gap:8px;
-    }
-    .meta-line{
-      display:flex;
-      justify-content:space-between;
-      font-size:.95rem;
-      color:#374151;
+      gap:16px;
     }
     .pill{
       display:inline-flex;
@@ -441,12 +425,22 @@
       const amountText = voucher.amount ? `${voucher.amount.toFixed(2)} €` : '5 € Rabatt';
       previewPlaceholder.innerHTML = `
         <div class="voucher-result">
-          <img class="voucher-image" src="data:image/png;base64,${voucher.card_base64 || voucher.qr_base64}" alt="Voucher">
-          <div class="voucher-meta">
-            <span class="pill">Code ${voucher.code}</span>
-            <div class="meta-line"><span>Vorteil</span><strong>${amountText}</strong></div>
-            <div class="list-item-actions">
-              <a class="btn primary" href="/vouchers/${voucher.code}/card.png" download>Download</a>
+          <div class="voucher-shell">
+            <div class="qr-card">
+              <img src="data:image/png;base64,${voucher.qr_base64}" alt="QR Code">
+            </div>
+            <div class="details">
+              <div>
+                <small>Code</small>
+                <strong class="code-value">${voucher.code}</strong>
+              </div>
+              <div>
+                <small>Betrag</small>
+                <strong>${amountText}</strong>
+              </div>
+              <div class="actions">
+                <a class="btn primary" href="/vouchers/${voucher.code}/card.png" download>Voucher als Bild speichern</a>
+              </div>
             </div>
           </div>
         </div>

@@ -9,6 +9,8 @@ import secrets
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
+import smtplib
+from email.message import EmailMessage
 
 import qrcode
 import pyotp
@@ -41,6 +43,11 @@ SESSION_COOKIE = "admin_session"
 SESSION_DURATION_HOURS = 8
 VOUCHER_SIGNING_SECRET = os.getenv("VOUCHER_SIGNING_SECRET", "CHANGE_ME_SIGNING_SECRET")
 UTC = dt.timezone.utc
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USERNAME or "noreply@example.com")
 
 
 class VoucherStatus(str, enum.Enum):
@@ -276,6 +283,35 @@ def send_email_stub(voucher: VoucherOut, voucher_png: bytes) -> None:
             f"Die QR-Grafik liegt als Base64 bei.\n\n"
             f"{base64.b64encode(voucher_png).decode('ascii')}\n"
         )
+
+
+def send_email_smtp(voucher: VoucherOut, voucher_png: bytes) -> None:
+    if not (SMTP_SERVER and SMTP_USERNAME and SMTP_PASSWORD):
+        raise RuntimeError("SMTP configuration missing")
+    msg = EmailMessage()
+    msg["Subject"] = f"Dein Gutschein {voucher.code}"
+    msg["From"] = SMTP_FROM
+    msg["To"] = voucher.email
+    redeem_hint = f"Redeem via QR code oder POST /vouchers/{voucher.code}/redeem"
+    amount_text = f"{amount_from_cents(voucher.amount):.2f} €" if voucher.amount is not None else "5 € Eintrittsrabatt"
+    body = (
+        f"Hallo {voucher.recipient_name or 'Voucher-Empfänger'},\n\n"
+        f"hier ist dein Gutschein. Vorteil: {amount_text}.\n"
+        f"Code: {voucher.code}\n"
+        f"{redeem_hint}\n\n"
+        f"Viel Spaß bei Aixtraball!"
+    )
+    msg.set_content(body)
+    msg.add_attachment(
+        voucher_png,
+        maintype="image",
+        subtype="png",
+        filename=f"voucher_{voucher.code}.png",
+    )
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(msg)
 
 
 def amount_to_cents(amount: Optional[float]) -> Optional[int]:
@@ -546,7 +582,13 @@ def create_voucher(
     voucher = record_to_out(record)
     if payload.delivery_method == VoucherDelivery.email and payload.email:
         voucher_png = generate_qr(signed_payload(voucher.code))
-        send_email_stub(voucher, voucher_png)
+        try:
+            if SMTP_SERVER and SMTP_USERNAME and SMTP_PASSWORD:
+                send_email_smtp(voucher, voucher_png)
+            else:
+                send_email_stub(voucher, voucher_png)
+        except Exception as exc:
+            print(f"Email send failed: {exc}")
     return voucher
 
 
@@ -574,7 +616,10 @@ def send_voucher_email(code: str, payload: EmailSendPayload) -> VoucherOut:
     update_voucher_record(record)
     voucher = record_to_out(record)
     voucher_png = generate_qr(signed_payload(voucher.code))
-    send_email_stub(voucher, voucher_png)
+    if SMTP_SERVER and SMTP_USERNAME and SMTP_PASSWORD:
+        send_email_smtp(voucher, voucher_png)
+    else:
+        send_email_stub(voucher, voucher_png)
     return voucher
 
 

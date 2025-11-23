@@ -12,6 +12,12 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-aixtraball-aixtraball210!}
       - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET:-JBSWY3DPEHPK3PXP}
       - VOUCHER_SIGNING_SECRET=${VOUCHER_SIGNING_SECRET:-CHANGE_ME_SIGNING_SECRET}
+      - SMTP_SERVER=smtp.aixtraball.de
+      - SMTP_PORT=587
+      - SMTP_USERNAME=noreply@aixtraball.de
+      - SMTP_PASSWORD=${SMTP_SECRET}
+      - SMTP_FROM=noreply@aixtraball.de  # optional
+
     ports:
       - "8000:8000"
     volumes:
