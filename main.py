@@ -40,6 +40,7 @@ CREATION_WINDOW_MINUTES = 60
 SESSION_COOKIE = "admin_session"
 SESSION_DURATION_HOURS = 8
 VOUCHER_SIGNING_SECRET = os.getenv("VOUCHER_SIGNING_SECRET", "CHANGE_ME_SIGNING_SECRET")
+UTC = dt.timezone.utc
 
 
 class VoucherStatus(str, enum.Enum):
@@ -286,12 +287,18 @@ def amount_from_cents(amount: Optional[int]) -> Optional[float]:
 
 
 def serialize_datetime(value: Optional[dt.datetime]) -> Optional[str]:
-    return value.isoformat() if value else None
+    if not value:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat()
 
 
 def parse_datetime(value: Optional[str]) -> Optional[dt.datetime]:
     if not value:
         return None
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
     return dt.datetime.fromisoformat(value)
 
 
@@ -394,7 +401,7 @@ def record_to_out(record: dict) -> VoucherOut:
 
 def create_voucher_record(payload: VoucherCreate, *, device_id: Optional[str] = None, code: Optional[str] = None) -> dict:
     def mutator(data: dict):
-        now = dt.datetime.utcnow()
+        now = dt.datetime.now(UTC)
         record = {
             "id": data.get("next_id", 1),
             "code": code or uuid.uuid4().hex,
@@ -446,12 +453,12 @@ def creation_enabled() -> AdminStatus:
     if not flag or not flag.get("expires_at"):
         return AdminStatus(active=False, enabled_until=None)
     expires_at = parse_datetime(flag.get("expires_at"))
-    active = expires_at is not None and expires_at > dt.datetime.utcnow()
+    active = expires_at is not None and expires_at > dt.datetime.now(UTC)
     return AdminStatus(active=active, enabled_until=expires_at)
 
 
 def set_creation_window(minutes: int = CREATION_WINDOW_MINUTES) -> AdminStatus:
-    expires_at = dt.datetime.utcnow() + dt.timedelta(minutes=minutes)
+    expires_at = dt.datetime.now(UTC) + dt.timedelta(minutes=minutes)
 
     def mutator(data: dict):
         data["feature_flag"] = {"expires_at": expires_at.isoformat()}
@@ -469,7 +476,7 @@ def require_creation_enabled() -> None:
 
 def create_admin_session() -> dict:
     def mutator(data: dict):
-        now = dt.datetime.utcnow()
+        now = dt.datetime.now(UTC)
         expires_at = now + dt.timedelta(hours=SESSION_DURATION_HOURS)
         token = secrets.token_urlsafe(32)
         sessions = []
@@ -489,7 +496,7 @@ def get_session_by_token(token: Optional[str]) -> Optional[dict]:
         return None
 
     def mutator(data: dict):
-        now = dt.datetime.utcnow()
+        now = dt.datetime.now(UTC)
         found = None
         sessions = []
         for entry in data.get("sessions", []):
@@ -650,7 +657,7 @@ def redeem_voucher(
         )
 
     record["status"] = VoucherStatus.redeemed.value
-    record["redeemed_at"] = dt.datetime.utcnow().isoformat()
+    record["redeemed_at"] = dt.datetime.now(UTC).isoformat()
     update_voucher_record(record)
 
     return RedeemResult(
