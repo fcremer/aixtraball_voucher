@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aixtraball Voucher Studio</title>
+  <style>
+    :root{
+      --primary:#D23729;
+      --primary-dark:#A52317;
+      --bg:#f6f7fb;
+      font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0;
+      min-height:100vh;
+      background:radial-gradient(circle at 20% 20%, rgba(210,55,41,.08), transparent 32%), var(--bg);
+      color:#161823;
+      padding:24px 12px 60px;
+    }
+    .logo-bar{
+      text-align:center;
+      margin-bottom:18px;
+    }
+    .logo-bar img{
+      height:44px;
+    }
+    .container{
+      width:min(1020px,100%);
+      margin:0 auto;
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+    .card{
+      background:rgba(255,255,255,.92);
+      border-radius:20px;
+      border:1px solid rgba(15,23,42,.06);
+      box-shadow:0 24px 40px rgba(15,23,42,.08);
+      padding:20px;
+    }
+    .glass{
+      backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);
+    }
+    h1,h2,h3{
+      margin:0 0 8px;
+      letter-spacing:-0.4px;
+    }
+    p{
+      margin:0 0 10px;
+      color:#6b7280;
+    }
+    form{
+      display:grid;
+      gap:12px;
+    }
+    label{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      font-size:.9rem;
+      color:#374151;
+    }
+    input, select, textarea, button{
+      font:inherit;
+    }
+    input, select, textarea{
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid #d6dae1;
+      background:#f9fafc;
+    }
+    input:focus, select:focus, textarea:focus{
+      outline:none;
+      border-color:var(--primary);
+      background:#fff;
+      box-shadow:0 0 0 2px rgba(210,55,41,.15);
+    }
+    textarea{min-height:80px;resize:vertical;}
+    .btn{
+      display:inline-flex;
+      justify-content:center;
+      align-items:center;
+      gap:8px;
+      padding:12px 16px;
+      border-radius:12px;
+      border:1px solid transparent;
+      font-weight:600;
+      cursor:pointer;
+      transition:transform .1s, box-shadow .2s;
+    }
+    .btn.primary{
+      background:linear-gradient(120deg,var(--primary),var(--primary-dark));
+      color:#fff;
+      box-shadow:0 14px 30px rgba(210,55,41,.25);
+    }
+    .btn.ghost{
+      background:#fff;
+      border-color:rgba(210,55,41,.3);
+      color:var(--primary);
+    }
+    .btn:disabled{
+      opacity:.5;
+      cursor:not-allowed;
+    }
+    .hidden{display:none;}
+    .status-pill{
+      display:inline-flex;
+      align-items:center;
+      padding:6px 12px;
+      border-radius:999px;
+      font-weight:600;
+      background:#fdecec;
+      color:#a62317;
+      font-size:.9rem;
+    }
+    .status-pill.active{
+      background:#e8f7ec;
+      color:#0a7a2c;
+    }
+    .status-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+    }
+    .hint-box{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px dashed rgba(210,55,41,.35);
+      color:#8a1f1b;
+      font-size:.9rem;
+    }
+    .grid{
+      display:grid;
+      gap:18px;
+    }
+    .grid.two{
+      grid-template-columns:1fr;
+    }
+    .result{
+      margin-top:14px;
+    }
+    .voucher-result{
+      display:grid;
+      gap:12px;
+    }
+    .voucher-image{
+      width:100%;
+      border-radius:16px;
+      border:1px solid rgba(0,0,0,.08);
+      box-shadow:0 14px 30px rgba(0,0,0,.12);
+    }
+    .voucher-meta{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .meta-line{
+      display:flex;
+      justify-content:space-between;
+      font-size:.95rem;
+      color:#374151;
+    }
+    .pill{
+      display:inline-flex;
+      padding:6px 12px;
+      border-radius:999px;
+      background:rgba(210,55,41,.08);
+      color:var(--primary-dark);
+      font-weight:600;
+      font-size:.8rem;
+    }
+    .badge{
+      display:inline-flex;
+      padding:5px 10px;
+      border-radius:999px;
+      font-size:.75rem;
+      font-weight:700;
+    }
+    .badge.active{background:#e7f5ed;color:#0a7a2c;}
+    .badge.redeemed{background:#fde8e7;color:#a62317;}
+    .list{
+      display:grid;
+      gap:12px;
+    }
+    .list-item{
+      border:1px solid rgba(0,0,0,.08);
+      border-radius:14px;
+      padding:12px;
+      background:#fff;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .list-item-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .chips{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .login-form input{
+      background:#fff;
+    }
+    #login-error{
+      color:#a62317;
+      font-size:.9rem;
+      min-height:1.4em;
+    }
+    @media(min-width:920px){
+      .grid.two{grid-template-columns:2fr 1fr;}
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-bar">
+    <img src="/static/logo.png" alt="Aixtraball">
+  </div>
+  <main class="container">
+    <section id="login-card" class="card glass">
+      <h2>Voucher Studio Login</h2>
+      <p>Bitte mit Passwort & Einmalcode anmelden.</p>
+      <form id="login-form" class="login-form">
+        <input type="password" id="login-password" placeholder="Passwort" autocomplete="current-password" required>
+        <input type="text" id="login-otp" placeholder="OTP aus Authenticator" autocomplete="one-time-code" required>
+        <button class="btn primary" type="submit">Login</button>
+      </form>
+      <p id="login-error"></p>
+    </section>
+
+    <section id="studio" class="hidden">
+      <div class="grid two">
+        <div class="card">
+          <div class="status-row">
+            <div id="creation-status" class="status-pill">Status prüfen...</div>
+            <button class="btn ghost" id="unlock-btn" type="button">60 Minuten aktivieren</button>
+          </div>
+          <div id="unlock-hint" class="hint-box">Nach Ablauf automatisch gesperrt.</div>
+          <form id="voucher-form">
+            <label>
+              Betrag (optional)
+              <input type="number" step="0.01" name="amount" placeholder="5.00">
+            </label>
+            <label>
+              Empfänger Name
+              <input type="text" name="recipient_name" placeholder="Gastname">
+            </label>
+            <label>
+              E-Mail (optional)
+              <input type="email" name="email" placeholder="kunde@example.com">
+            </label>
+            <label>
+              Notiz
+              <textarea name="note" placeholder="Interne Info"></textarea>
+            </label>
+            <label>
+              Zustellung
+              <select name="delivery_method">
+                <option value="download">Download</option>
+                <option value="email">E-Mail (Stub)</option>
+              </select>
+            </label>
+            <button class="btn primary" type="submit">Voucher erzeugen</button>
+          </form>
+          <div id="result" class="result"></div>
+        </div>
+        <div class="card">
+          <h3>Letzte Vorschau</h3>
+          <p>Download liefert die Wallet-Ansicht.</p>
+          <div id="preview-placeholder" class="hint-box">Noch kein Voucher generiert.</div>
+        </div>
+      </div>
+
+      <section class="card">
+        <h2>Vouchers</h2>
+        <div id="list" class="list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const loginCard = document.getElementById('login-card');
+    const studio = document.getElementById('studio');
+    const loginForm = document.getElementById('login-form');
+    const loginError = document.getElementById('login-error');
+    const statusPill = document.getElementById('creation-status');
+    const unlockBtn = document.getElementById('unlock-btn');
+    const unlockHint = document.getElementById('unlock-hint');
+    const form = document.getElementById('voucher-form');
+    const result = document.getElementById('result');
+    const list = document.getElementById('list');
+    const previewPlaceholder = document.getElementById('preview-placeholder');
+
+    let creationActiveUntil = null;
+    let countdownTimer = null;
+    let isLoggedIn = false;
+
+    function showLogin() {
+      isLoggedIn = false;
+      studio.classList.add('hidden');
+      loginCard.classList.remove('hidden');
+    }
+
+    function showStudio() {
+      isLoggedIn = true;
+      loginCard.classList.add('hidden');
+      studio.classList.remove('hidden');
+    }
+
+    function formatCountdown(date) {
+      const diff = date - new Date();
+      if (diff <= 0) return '0m 0s';
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      return `${mins}m ${secs}s`;
+    }
+
+    function setFormEnabled(enabled) {
+      Array.from(form.elements).forEach(el => { el.disabled = !enabled; });
+      unlockBtn.disabled = !isLoggedIn;
+    }
+
+    function renderStatus(data) {
+      creationActiveUntil = data.enabled_until ? new Date(data.enabled_until) : null;
+      if (data.active && creationActiveUntil && creationActiveUntil > new Date()) {
+        statusPill.textContent = `Aktiv – ${formatCountdown(creationActiveUntil)} verbleibend`;
+        statusPill.classList.add('active');
+        unlockHint.textContent = `Freigabe endet um ${creationActiveUntil.toLocaleTimeString()}`;
+        setFormEnabled(true);
+      } else {
+        statusPill.textContent = 'Gesperrt – jetzt freigeben';
+        statusPill.classList.remove('active');
+        unlockHint.textContent = 'Voucher-Erstellung ruhend.';
+        setFormEnabled(false);
+      }
+      if (countdownTimer) clearInterval(countdownTimer);
+      if (creationActiveUntil) {
+        countdownTimer = setInterval(() => {
+          if (!creationActiveUntil) return;
+          if (creationActiveUntil <= new Date()) {
+            clearInterval(countdownTimer);
+            creationActiveUntil = null;
+            renderStatus({ active: false, enabled_until: null });
+          } else {
+            statusPill.textContent = `Aktiv – ${formatCountdown(creationActiveUntil)} verbleibend`;
+          }
+        }, 1000);
+      }
+    }
+
+    async function request(url, options = {}) {
+      const resp = await fetch(url, { credentials: 'include', ...options });
+      if (resp.status === 401) {
+        showLogin();
+        throw new Error('Login erforderlich');
+      }
+      return resp;
+    }
+
+    async function pollStatus() {
+      try {
+        const res = await request('/admin/status');
+        const data = await res.json();
+        renderStatus(data);
+      } catch (err) {
+        statusPill.textContent = err.message;
+      }
+    }
+
+    async function unlockWindow() {
+      try {
+        unlockBtn.disabled = true;
+        unlockBtn.textContent = 'Aktiviere...';
+        const res = await request('/admin/enable', { method: 'POST' });
+        const data = await res.json();
+        renderStatus(data);
+      } catch (err) {
+        statusPill.textContent = err.message;
+      } finally {
+        unlockBtn.textContent = '60 Minuten aktivieren';
+        unlockBtn.disabled = false;
+      }
+    }
+
+    async function loadVouchers() {
+      try {
+        const res = await request('/vouchers');
+        const vouchers = await res.json();
+        list.innerHTML = '';
+        if (!vouchers.length) {
+          list.innerHTML = '<div class="hint-box">Noch keine Vouchers vorhanden.</div>';
+          return;
+        }
+        vouchers.forEach(voucher => {
+          const div = document.createElement('div');
+          div.className = 'list-item';
+          div.innerHTML = `
+            <div>
+              <div class="meta-line">
+                <strong>${voucher.code}</strong>
+                <span class="badge ${voucher.status}">${voucher.status}</span>
+              </div>
+              <div class="chips">
+                ${voucher.amount ? `<span class="pill">${voucher.amount.toFixed(2)} €</span>` : '<span class="pill">5 € Rabatt</span>'}
+                ${voucher.recipient_name ? `<span class="pill">${voucher.recipient_name}</span>` : ''}
+              </div>
+              <p>${new Date(voucher.created_at).toLocaleString()}</p>
+            </div>
+            <div class="list-item-actions">
+              <a class="btn ghost" href="/vouchers/${voucher.code}/card.png" download>Download</a>
+              <button class="btn ghost" onclick="deleteVoucher('${voucher.code}')">Löschen</button>
+            </div>
+          `;
+          list.appendChild(div);
+        });
+      } catch (err) {
+        if (err.message !== 'Login erforderlich') {
+          list.innerHTML = `<div class="hint-box">${err.message}</div>`;
+        }
+      }
+    }
+
+    window.deleteVoucher = async (code) => {
+      if (!confirm(`Voucher ${code} löschen?`)) return;
+      try {
+        await request(`/vouchers/${code}`, { method: 'DELETE' });
+        await loadVouchers();
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+
+    function renderResult(voucher) {
+      const amountText = voucher.amount ? `${voucher.amount.toFixed(2)} €` : '5 € Rabatt';
+      previewPlaceholder.innerHTML = `
+        <div class="voucher-result">
+          <img class="voucher-image" src="data:image/png;base64,${voucher.card_base64 || voucher.qr_base64}" alt="Voucher">
+          <div class="voucher-meta">
+            <span class="pill">Code ${voucher.code}</span>
+            <div class="meta-line"><span>Vorteil</span><strong>${amountText}</strong></div>
+            <div class="list-item-actions">
+              <a class="btn primary" href="/vouchers/${voucher.code}/card.png" download>Download</a>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      loginError.textContent = '';
+      const password = document.getElementById('login-password').value;
+      const otp = document.getElementById('login-otp').value;
+      try {
+        const res = await fetch('/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ password, otp })
+        });
+        if (!res.ok) {
+          const msg = await res.json().catch(() => ({}));
+          throw new Error(msg.detail || 'Login fehlgeschlagen');
+        }
+        await res.json();
+        showStudio();
+        await pollStatus();
+        await loadVouchers();
+      } catch (err) {
+        loginError.textContent = err.message;
+        showLogin();
+      }
+    });
+
+    unlockBtn.addEventListener('click', unlockWindow);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const payload = {
+        amount: formData.get('amount') ? parseFloat(formData.get('amount')) : null,
+        recipient_name: formData.get('recipient_name') || null,
+        email: formData.get('email') || null,
+        note: formData.get('note') || null,
+        delivery_method: formData.get('delivery_method') || 'download'
+      };
+      try {
+        const res = await request('/vouchers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const voucher = await res.json();
+        renderResult(voucher);
+        await loadVouchers();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    async function boot() {
+      try {
+        const res = await fetch('/admin/status', { credentials: 'include' });
+        if (!res.ok) throw new Error('not logged in');
+        await res.json();
+        showStudio();
+        await pollStatus();
+        await loadVouchers();
+      } catch {
+        showLogin();
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

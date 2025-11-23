@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aixtraball Voucher</title>
+  <style>
+    :root{
+      --primary:#D23729;
+      --primary-dark:#A52317;
+      font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0;
+      min-height:100vh;
+      background:
+        radial-gradient(circle at 15% 15%, rgba(210,55,41,.18), transparent 32%),
+        linear-gradient(180deg,#fefefe,#f2f4fa);
+      color:#10121a;
+      padding:26px 12px 40px;
+      display:flex;
+      justify-content:center;
+    }
+    .logo-bar{
+      text-align:center;
+      margin-bottom:16px;
+    }
+    .logo-bar img{
+      height:42px;
+    }
+    .card{
+      width:min(480px,100%);
+      background:#fff;
+      border-radius:28px;
+      border:1px solid rgba(0,0,0,.04);
+      box-shadow:0 26px 48px rgba(15,23,42,.15);
+      padding:22px 22px 28px;
+    }
+    h1{
+      margin:10px 0 6px;
+      letter-spacing:-0.35px;
+      font-size:1.65rem;
+      text-align:center;
+    }
+    p{margin:0;color:#5f6470;text-align:center;line-height:1.55;}
+    .status{
+      margin:16px auto 0;
+      padding:12px 14px;
+      border-radius:16px;
+      background:#faf3f2;
+      color:#7c1a17;
+      border:1px dashed rgba(210,55,41,.4);
+      font-size:.9rem;
+      text-align:center;
+      max-width:360px;
+    }
+    .voucher-wrap{
+      margin-top:18px;
+      border-radius:24px;
+      padding:20px;
+      background:#fff;
+      border:1px solid rgba(0,0,0,.03);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);
+    }
+    .voucher-box{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:20px;
+      text-align:center;
+    }
+    .qr-card{
+      border-radius:22px;
+      border:1px solid rgba(0,0,0,.08);
+      background:linear-gradient(180deg,#121527,#1b1f34);
+      padding:22px;
+      text-align:center;
+      width:min(320px,100%);
+    }
+    .qr-card img{
+      width:min(280px,100%);
+      height:auto;
+      border-radius:14px;
+      background:#fff;
+      padding:12px;
+    }
+    .details{
+      display:flex;
+      flex-direction:column;
+      gap:16px;
+      width:100%;
+    }
+    .details strong{
+      display:block;
+      font-size:1.2rem;
+      letter-spacing:0.4px;
+    }
+    .code-value{
+      font-size:.9rem;
+      letter-spacing:0;
+      word-break:break-all;
+      font-family:'JetBrains Mono','SFMono-Regular',monospace;
+      color:#111828;
+    }
+    .actions{display:flex;flex-direction:column;gap:10px;width:100%;}
+    .action-btn{
+      display:inline-flex;
+      justify-content:center;
+      align-items:center;
+      padding:13px 16px;
+      border-radius:14px;
+      border:none;
+      font-weight:600;
+      cursor:pointer;
+      background:linear-gradient(120deg,var(--primary),var(--primary-dark));
+      color:#fff;
+      box-shadow:0 18px 34px rgba(210,55,41,.25);
+    }
+    .email-row{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .email-row input{
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid #d9dde3;
+      font:inherit;
+    }
+    .notice{
+      margin-top:6px;
+      font-size:.85rem;
+      color:#868b95;
+    }
+    @media(min-width:640px){
+      .card{width:min(560px,100%);}
+      .voucher-box{
+        flex-direction:row;
+        align-items:flex-start;
+        text-align:left;
+      }
+      .qr-card{width:280px;}
+      .details{align-items:flex-start;}
+      .actions{flex-direction:row;}
+      .action-btn{flex:1;}
+    }
+  </style>
+  <script defer src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+</head>
+<body>
+  <div class="card" id="page">
+    <div class="logo-bar">
+      <img src="/static/logo.png" alt="Aixtraball">
+    </div>
+    <h1>Eintritts-Voucher</h1>
+    <p>Danke, dass du heute bei uns warst! Wir hoffen, es hat dir gut gefallen. Falls du noch nicht genug bekommen hast, erhältst du hiermit einen persönlichen Gutschein für unseren nächsten regulären Öffnungstag. Bitte speicher ihn oder sende ihn dir per E-Mail zu.</p>
+    <div id="status" class="status">Gutschein wird erstellt...</div>
+    <div id="voucher" class="voucher-wrap" style="display:none;">
+      <div class="voucher-box">
+        <div class="qr-card">
+          <img id="qr" alt="QR Code">
+        </div>
+        <div class="details">
+          <div>
+            <small>Code</small>
+            <strong id="code" class="code-value"></strong>
+          </div>
+          <div>
+            <small>Betrag</small>
+            <strong id="amount"></strong>
+          </div>
+          <div class="actions">
+            <button class="action-btn" id="download-btn" type="button">Voucher als Bild speichern</button>
+            <button class="action-btn" id="email-btn" type="button" style="background:linear-gradient(120deg,#1e1f25,#3a3c47);box-shadow:0 16px 30px rgba(17,17,27,.15);">Per E-Mail erhalten</button>
+          </div>
+          <div class="email-row">
+            <input type="email" id="email-input" placeholder="E-Mail (optional)">
+            <div id="email-status" class="notice"></div>
+          </div>
+          <p class="notice">Der Button speichert den gesamten Gutschein als Screenshot.</p>
+          <p class="notice">Infos & Öffnungszeiten: aixtraball.de</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentVoucher = null;
+
+    async function fetchVoucher() {
+      const statusEl = document.getElementById('status');
+      const voucherWrap = document.getElementById('voucher');
+      try {
+        const res = await fetch('/claim', { method: 'POST' });
+        if (!res.ok) {
+          let message = 'Aktuell kein Voucher verfügbar.';
+          try {
+            const data = await res.json();
+            message = data.detail || message;
+          } catch (err) {}
+          throw new Error(message);
+        }
+        const voucher = await res.json();
+        currentVoucher = voucher;
+        statusEl.style.display = 'none';
+        voucherWrap.style.display = 'block';
+        document.getElementById('qr').src = `data:image/png;base64,${voucher.qr_base64}`;
+        document.getElementById('code').textContent = voucher.code;
+        document.getElementById('amount').textContent = voucher.amount ? `${voucher.amount.toFixed(2)} €` : '5 € Rabatt auf ein Einzelticket';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.style.display = 'block';
+      }
+    }
+
+    async function downloadScreenshot() {
+      if (!currentVoucher) return;
+      const page = document.getElementById('page');
+      const canvas = await html2canvas(page, { backgroundColor: '#f4f6fb', scale: window.devicePixelRatio || 2 });
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `aixtraball-voucher-${currentVoucher.code}.png`;
+      link.click();
+    }
+
+    async function sendEmail() {
+      if (!currentVoucher) return;
+      const emailInput = document.getElementById('email-input');
+      const statusEl = document.getElementById('email-status');
+      const email = emailInput.value.trim();
+      if (!email) {
+        statusEl.textContent = 'Bitte E-Mail angeben.';
+        return;
+      }
+      statusEl.textContent = 'Sende...';
+      try {
+        const res = await fetch(`/vouchers/${currentVoucher.code}/send_email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        if (!res.ok) {
+          const msg = await res.json().catch(() => ({}));
+          throw new Error(msg.detail || 'Fehler beim Versand.');
+        }
+        await res.json();
+        statusEl.textContent = 'E-Mail verschickt (Stub).';
+      } catch (err) {
+        statusEl.textContent = err.message;
+      }
+    }
+
+    document.getElementById('download-btn').addEventListener('click', downloadScreenshot);
+    document.getElementById('email-btn').addEventListener('click', sendEmail);
+    fetchVoucher();
+  </script>
+</body>
+</html>

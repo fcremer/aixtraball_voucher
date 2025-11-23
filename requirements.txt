@@ -1,0 +1,8 @@
+fastapi==0.115.2
+uvicorn[standard]==0.30.1
+# SQLAlchemy 2.0.23 bricht mit Python 3.13 (TypingOnly Assertion); mit 2.0.36 behoben.
+sqlalchemy==2.0.36
+pydantic[email]==2.8.2
+qrcode==7.4.2
+pillow==10.4.0
+pyotp==2.9.0

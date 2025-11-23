@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aixtraball Redeem</title>
+  <style>
+    :root{
+      --bs-primary:#D23729;
+      --bs-primary-rgb:210,55,41;
+      --bs-primary-dark:#A52317;
+      font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0;
+      min-height:100vh;
+      background:
+        radial-gradient(circle at 15% 18%, rgba(var(--bs-primary-rgb),.08), transparent 30%),
+        radial-gradient(circle at 85% 0%, rgba(var(--bs-primary-rgb),.05), transparent 22%),
+        linear-gradient(180deg,#fff,#f6f7fb 70%,#fff);
+      color:#111827;
+      position:relative;
+    }
+    body.success-flash::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      background:rgba(46,204,113,.18);
+      pointer-events:none;
+      animation:flashOverlay .6s ease-in-out 2;
+      z-index:999;
+    }
+    body.error-flash::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      background:rgba(210,55,41,.2);
+      pointer-events:none;
+      animation:flashOverlay .6s ease-in-out 2;
+      z-index:999;
+    }
+    @keyframes flashOverlay{
+      0%,100%{opacity:0;}
+      50%{opacity:1;}
+    }
+    .logo-bar{
+      text-align:center;
+      padding:24px 18px 10px;
+    }
+    .logo-bar img{
+      height:40px;
+    }
+    main{
+      max-width:640px;
+      margin:0 auto;
+      padding:0 18px 40px;
+    }
+    .card{
+      background:#fff;
+      border:1px solid rgba(0,0,0,.06);
+      border-radius:18px;
+      padding:18px;
+      box-shadow:0 14px 26px rgba(0,0,0,.08);
+    }
+    h1{
+      margin:0 0 4px;
+      letter-spacing:-0.3px;
+    }
+    p{margin:0;color:#4b5563;}
+    .status{
+      margin-top:12px;
+      padding:12px;
+      border-radius:12px;
+      background:rgba(var(--bs-primary-rgb),.05);
+      border:1px dashed rgba(var(--bs-primary-rgb),.35);
+      min-height:48px;
+      color:#7f1d1d;
+      font-size:14px;
+    }
+    button, input{
+      font:inherit;
+    }
+    input{
+      width:100%;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid #d3d8df;
+      background:#f9fafb;
+      color:#0f172a;
+      margin-top:10px;
+    }
+    input:focus{
+      outline:none;
+      border-color:var(--bs-primary);
+      box-shadow:0 0 0 3px rgba(var(--bs-primary-rgb),.2);
+      background:#fff;
+    }
+    button{
+      margin-top:10px;
+      width:100%;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid var(--bs-primary);
+      background:linear-gradient(120deg,var(--bs-primary),var(--bs-primary-dark));
+      color:#fff;
+      font-weight:700;
+      cursor:pointer;
+      box-shadow:0 12px 24px rgba(var(--bs-primary-rgb),.22);
+    }
+    .pill{
+      display:inline-flex;
+      padding:8px 12px;
+      border-radius:12px;
+      background:rgba(var(--bs-primary-rgb),.1);
+      border:1px solid rgba(var(--bs-primary-rgb),.3);
+      margin-top:10px;
+      font-size:13px;
+      color:var(--bs-primary-dark);
+      gap:6px;
+      align-items:center;
+    }
+    .header-strip{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      margin-bottom:12px;
+    }
+    .badge{
+      padding:6px 12px;
+      border-radius:999px;
+      background:rgba(var(--bs-primary-rgb),.12);
+      color:var(--bs-primary-dark);
+      font-weight:700;
+      letter-spacing:.5px;
+      text-transform:uppercase;
+      font-size:12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-bar">
+    <img src="/static/logo.png" alt="Aixtraball">
+  </div>
+  <main>
+    <div class="card">
+      <h1>Voucher Redeem</h1>
+      <p>Scannen oder Code eintippen, fertig.</p>
+      <div class="header-strip">
+        <span class="badge">QR Format</span>
+        <span class="pill"><code>voucher:&lt;code&gt;</code></span>
+      </div>
+      <div id="reader" style="width: 100%;"></div>
+      <div class="status" id="scan-status">Warte auf Scan...</div>
+      <input type="text" id="manual-code" placeholder="Code oder QR-Text eingeben">
+      <button id="redeem-btn">Entwerten</button>
+      <div class="status" id="redeem-status"></div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    const scanStatus = document.getElementById('scan-status');
+    const redeemStatus = document.getElementById('redeem-status');
+    const manualInput = document.getElementById('manual-code');
+    const redeemBtn = document.getElementById('redeem-btn');
+    const handledCodes = new Set();
+    let isRedeeming = false;
+    let audioCtx;
+
+    function parseVoucherInput(text) {
+      if (!text) return null;
+      const trimmed = text.trim();
+      if (!trimmed) return null;
+      const lower = trimmed.toLowerCase();
+      if (lower.startsWith('voucher:')) {
+        const [, code, signature] = trimmed.split(':');
+        if (!code) return null;
+        return { code, signature: signature || null };
+      }
+      try {
+        const url = new URL(trimmed);
+        const codeParam = url.searchParams.get('code');
+        if (codeParam) return { code: codeParam, signature: url.searchParams.get('signature') };
+        if (url.pathname.startsWith('/redeem/')) {
+          return { code: url.pathname.split('/').pop(), signature: url.searchParams.get('signature') };
+        }
+      } catch (err) {}
+      return { code: trimmed, signature: null };
+    }
+
+    function flashSuccess() {
+      document.body.classList.add('success-flash');
+      setTimeout(() => document.body.classList.remove('success-flash'), 1200);
+    }
+
+    function flashError() {
+      document.body.classList.add('error-flash');
+      setTimeout(() => document.body.classList.remove('error-flash'), 1200);
+    }
+
+    function playPing() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      } catch (err) {
+        console.warn('Audio context unavailable', err);
+      }
+    }
+
+    async function redeem(payload) {
+      if (!payload || !payload.code) return;
+      if (handledCodes.has(payload.code)) {
+        redeemStatus.textContent = `Bereits verarbeitet: ${payload.code}`;
+        return;
+      }
+      if (isRedeeming) return;
+      isRedeeming = true;
+      redeemStatus.textContent = `Entwerte ${payload.code}...`;
+      try {
+        const url = payload.signature
+          ? `/vouchers/${payload.code}/redeem?signature=${encodeURIComponent(payload.signature)}`
+          : `/vouchers/${payload.code}/redeem`;
+        const res = await fetch(url, { method: 'POST' });
+        if (!res.ok) {
+          const msg = await res.json().catch(() => ({}));
+          const detail = msg.detail || msg;
+          const err = new Error(detail?.message || detail || 'Unbekannter Fehler');
+          err.redeemedAt = detail?.redeemed_at || msg.redeemed_at || null;
+          throw err;
+        }
+        const data = await res.json();
+        redeemStatus.textContent = `✅ Entwertet: ${data.code} um ${new Date(data.redeemed_at).toLocaleString()}`;
+        handledCodes.add(payload.code);
+        flashSuccess();
+        playPing();
+      } catch (err) {
+        const info = err.redeemedAt ? ` Bereits entwertet am ${new Date(err.redeemedAt).toLocaleString()}.` : '';
+        redeemStatus.textContent = `❌ Fehler: ${err.message}${info}`;
+        flashError();
+      } finally {
+        isRedeeming = false;
+      }
+    }
+
+    redeemBtn.addEventListener('click', () => {
+      const parsed = parseVoucherInput(manualInput.value);
+      if (!parsed) {
+        redeemStatus.textContent = 'Bitte gültigen Code eingeben.';
+        return;
+      }
+      redeem(parsed);
+    });
+
+    function onScanSuccess(decodedText) {
+      const parsed = parseVoucherInput(decodedText);
+      scanStatus.textContent = `QR gelesen: ${decodedText}`;
+      if (!parsed || !parsed.code) return;
+      if (handledCodes.has(parsed.code)) {
+        redeemStatus.textContent = `Bereits verarbeitet: ${parsed.code}`;
+        return;
+      }
+      manualInput.value = parsed.signature ? `voucher:${parsed.code}:${parsed.signature}` : parsed.code;
+      redeem(parsed);
+    }
+
+    function onScanFailure(error) {
+      // ignore noisy scan failures
+    }
+
+    function prefillFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) {
+        manualInput.value = code;
+      }
+    }
+
+    const config = { fps: 10, qrbox: { width: 260, height: 260 } };
+    const html5QrcodeScanner = new Html5QrcodeScanner("reader", config, false);
+    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    prefillFromQuery();
+  </script>
+</body>
+</html>
