@@ -32,6 +32,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: docker_build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -39,6 +40,9 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/voucher-service:${{ steps.version.outputs.tag }}
           build-args: |
             VERSION=${{ steps.version.outputs.tag }}
+
+      - name: Save digest
+        run: echo "${{ steps.docker_build.outputs.digest }}" > /tmp/digest.txt
 
       - name: Upload image digest artifact
         uses: actions/upload-artifact@v4
