@@ -191,10 +191,10 @@
         <span class="pill"><code>voucher:&lt;code&gt;</code></span>
       </div>
       <div id="reader" style="width: 100%;"></div>
-      <div class="status status--idle" id="scan-status">Warte auf Scan...</div>
+      <div class="status status--idle" id="scan-status"></div>
       <input type="text" id="manual-code" placeholder="Code oder QR-Text eingeben">
       <button id="redeem-btn">Entwerten</button>
-      <div class="status status--idle" id="redeem-status">Noch keine Entwertung.</div>
+      <div class="status status--idle" id="redeem-status"></div>
     </div>
   </main>
 
@@ -256,14 +256,14 @@
       document.body.classList.add('success-flash');
       setTimeout(() => document.body.classList.remove('success-flash'), 1200);
       scanStatus.className = 'status status--success';
-      scanStatus.textContent = '✅ QR erkannt';
+      scanStatus.textContent = 'QR erkannt';
     }
 
     function flashError(message) {
       document.body.classList.add('error-flash');
       setTimeout(() => document.body.classList.remove('error-flash'), 1200);
       scanStatus.className = 'status status--error';
-      scanStatus.textContent = message || '❌ Fehler beim Scan';
+      scanStatus.textContent = message || '';
     }
 
     function playPing() {

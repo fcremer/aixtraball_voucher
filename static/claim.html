@@ -36,6 +36,15 @@
       border:1px solid rgba(0,0,0,.04);
       box-shadow:0 26px 48px rgba(15,23,42,.15);
       padding:22px 22px 28px;
+      position:relative;
+    }
+    .card.redeemed::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      border-radius:inherit;
+      background:rgba(220,38,38,.15);
+      pointer-events:none;
     }
     h1{
       margin:10px 0 6px;
@@ -84,6 +93,32 @@
       border-radius:14px;
       background:#fff;
       padding:12px;
+      cursor:pointer;
+      transition:transform .2s ease;
+    }
+    .qr-card img:hover{transform:scale(1.02);}
+    .lightbox{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.85);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:999;
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .2s ease;
+    }
+    .lightbox.is-visible{
+      opacity:1;
+      pointer-events:all;
+    }
+    .lightbox img{
+      width:min(90vw,420px);
+      height:auto;
+      border-radius:20px;
+      background:#fff;
+      padding:16px;
     }
     .details{
       display:flex;
@@ -149,6 +184,10 @@
   <script defer src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="QR Vollbild">
+  </div>
+
   <div class="card" id="page">
     <div class="logo-bar">
       <img src="/static/logo.png" alt="Aixtraball">
@@ -179,6 +218,7 @@
             <div id="email-status" class="notice"></div>
           </div>
           <p class="notice">Infos & Öffnungszeiten: aixtraball.de</p>
+          <p class="notice code-value" id="code-debug"></p>
         </div>
       </div>
     </div>
@@ -203,14 +243,29 @@
         const voucher = await res.json();
         currentVoucher = voucher;
         statusEl.style.display = 'none';
+        const card = document.getElementById('page');
+        card.classList.toggle('redeemed', voucher.status === 'redeemed');
         voucherWrap.style.display = 'block';
-        document.getElementById('qr').src = `data:image/png;base64,${voucher.qr_base64}`;
+        const qrImg = document.getElementById('qr');
+        qrImg.src = `data:image/png;base64,${voucher.qr_base64}`;
+        qrImg.onclick = () => openLightbox(voucher.qr_base64);
         document.getElementById('code').textContent = voucher.code;
+        document.getElementById('code-debug').textContent = `Debug: ${voucher.code}`;
         document.getElementById('amount').textContent = voucher.amount ? `${voucher.amount.toFixed(2)} €` : '5 € Rabatt auf ein Einzelticket';
       } catch (err) {
         statusEl.textContent = err.message;
         statusEl.style.display = 'block';
       }
+    }
+
+    function openLightbox(base64) {
+      const lightbox = document.getElementById('lightbox');
+      const img = document.getElementById('lightbox-img');
+      img.src = `data:image/png;base64,${base64}`;
+      lightbox.classList.add('is-visible');
+      lightbox.onclick = () => {
+        lightbox.classList.remove('is-visible');
+      };
     }
 
     async function downloadScreenshot() {
