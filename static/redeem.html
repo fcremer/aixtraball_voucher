@@ -286,10 +286,11 @@
     }
 
     async function redeem(payload) {
-      if (overlayOpen) return;
       if (!payload || !payload.code) return;
       if (handledCodes.has(payload.code)) {
+        redeemStatus.className = 'status status--error';
         redeemStatus.textContent = `Bereits verarbeitet: ${payload.code}`;
+        showFeedback('error', 'Bereits entwertet', 'Der Voucher wurde bereits verarbeitet.', `Code: ${payload.code}`);
         return;
       }
       if (isRedeeming) return;
